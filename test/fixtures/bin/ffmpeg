@@ -20,7 +20,12 @@ fi
 # Speech-to-text fixture: assert the expected resample args and write the last
 # argument (the output WAV path) as a minimal RIFF/WAVE header.
 if [ "$#" -ge 2 ] && [ "${1:-}" = "-y" ] && [ "$2" = "-hide_banner" ]; then
-  if ! printf '%s ' "${@:1:$#-1}" | grep -q -- 'pcm_s16le'; then
+  if printf '%s ' "${@:1:$#-1}" | grep -q -- 'libmp3lame'; then
+    output="${@: -1}"
+    printf 'ID3 fixture MP3 audio' > "$output"
+    exit 0
+  fi
+  if ! printf '%s ' "${@:1:$#-1}" | grep -Eq -- 'pcm_s16le|pcm_f32le'; then
     printf 'fixture ffmpeg expected pcm_s16le output\n' >&2
     exit 1
   fi

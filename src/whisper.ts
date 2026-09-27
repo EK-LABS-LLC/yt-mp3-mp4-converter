@@ -200,3 +200,15 @@ export async function transcribeAudioFile(
     await rm(workingDirectory, { recursive: true, force: true });
   }
 }
+
+/** Extracts a local media file's first audio track as an MP3. */
+export async function extractMp3File(inputPath: string, outputPath: string): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  const result = await spawnProcess(ffmpegPath(), [
+    "-y", "-hide_banner", "-loglevel", "error", "-i", inputPath,
+    "-map", "0:a:0", "-vn", "-codec:a", "libmp3lame", "-q:a", "2", outputPath,
+  ], whisperConfig().ffmpegTimeoutSeconds, "ffmpeg could not be started");
+  if (result.exitCode !== 0) throw new TranscriptionError(result.stderr.trim() || "audio extraction failed");
+  if (!(await isFile(outputPath)) || Bun.file(outputPath).size === 0) throw new TranscriptionError("audio extraction produced no MP3 output");
+  return outputPath;
+}

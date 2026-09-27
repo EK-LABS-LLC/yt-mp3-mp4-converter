@@ -3,8 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube to MP3/MP4/Transcript Converter</title>
+  <meta name="color-scheme" content="light">
+  <title>Transcribe — Your video. In words.</title>
   <style>
+    :root {
+      --canvas: #f6f4f0;
+      --surface: #fffefc;
+      --surface-soft: #fbf9f6;
+      --ink: #26231f;
+      --ink-soft: #55514a;
+      --muted: #7a746b;
+      --border: #e7e3db;
+      --border-strong: #d8d2c6;
+      --accent: #2e2b27;
+      --accent-hover: #211f1b;
+      --accent-ink: #f8f6f2;
+      --focus: #4f4a42;
+      --success-bg: #eef3ec;
+      --success-ink: #316141;
+      --error-bg: #f9edea;
+      --error-ink: #99392b;
+      --processing-bg: #f1efe9;
+      --processing-ink: #55514a;
+      --shadow: 0 1px 2px rgba(38, 35, 31, 0.05), 0 10px 30px rgba(38, 35, 31, 0.06);
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -12,195 +35,511 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--canvas);
+      color: var(--ink);
       min-height: 100vh;
+      padding: 44px 20px 32px;
       display: flex;
-      align-items: center;
       justify-content: center;
-      padding: 20px;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .container {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      padding: 40px;
+    :focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .page {
       width: 100%;
-      max-width: 560px;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
-    h1 {
-      color: #1a1a2e;
+    [hidden] { display: none !important; }
+
+    .workspace { width: 100%; max-width: 640px; }
+
+    .masthead {
       text-align: center;
-      margin-bottom: 8px;
-      font-size: 24px;
     }
 
-    .subtitle {
-      color: #666;
-      text-align: center;
-      margin-bottom: 32px;
-      font-size: 14px;
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
     }
 
-    .form-group {
-      margin-bottom: 24px;
-    }
-
-    label {
+    .brand svg {
       display: block;
-      color: #333;
+    }
+
+    .brand-name {
+      font-size: 15px;
       font-weight: 600;
-      margin-bottom: 8px;
-      font-size: 14px;
+      letter-spacing: 0.01em;
     }
 
-    input[type="url"] {
+    .workspace-label {
+      margin-top: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hero {
+      text-align: center;
+      margin: 46px 0 30px;
+    }
+
+    .hero h1 {
+      font-size: clamp(26px, 5vw, 34px);
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .hero-sub {
+      margin: 12px auto 0;
+      max-width: 44ch;
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink-soft);
+    }
+
+    .panel {
       width: 100%;
-      padding: 12px 16px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 14px;
-      transition: border-color 0.2s;
+      max-width: 640px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
     }
 
-    input[type="url"]:focus {
-      outline: none;
-      border-color: #e94560;
+    .segmented {
+      border: 0;
+      position: relative;
+      margin-bottom: 20px;
     }
 
-    .format-options {
+    .segmented-track {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      background: #efece6;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px;
+    }
+
+    .segmented input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segmented label {
+      display: block;
+      text-align: center;
+      padding: 9px 12px;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+
+    .segmented input:checked + label {
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(38, 35, 31, 0.08), 0 0 0 1px var(--border);
+    }
+
+    .segmented input:focus-visible + label {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .segmented input:disabled + label {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .dropzone {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 34px 20px;
+      background: var(--surface-soft);
+      border: 1.5px dashed var(--border-strong);
+      border-radius: 14px;
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .dropzone:hover:not(:disabled) {
+      border-color: #b9b2a4;
+      background: #f7f4ef;
+    }
+
+    .dropzone.dragging {
+      border-color: var(--focus);
+      background: #f1efe9;
+    }
+
+    .dropzone:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .dropzone svg {
+      color: var(--ink-soft);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .dropzone-hint {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .sr-only:focus-visible + .dropzone {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .file-chip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+
+    .file-chip > svg {
+      flex: none;
+      color: var(--ink-soft);
+    }
+
+    .file-meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    .file-size {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .file-remove {
+      margin-left: auto;
+      flex: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .file-remove:hover:not(:disabled) {
+      background: #f1eee8;
+      color: var(--ink);
+      border-color: var(--border);
+    }
+
+    .file-remove:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .upload-help {
+      margin: 12px 2px 16px;
+      font-size: 12.5px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #submitBtn {
+      width: 100%;
+      padding: 13px 18px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: none;
+      border-radius: 11px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #submitBtn:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    #submitBtn:disabled {
+      background: #c8c2b8;
+      cursor: not-allowed;
+    }
+
+    .url-panel {
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-soft);
+    }
+
+    .url-panel summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 13px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink-soft);
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .url-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .url-panel summary:hover {
+      color: var(--ink);
+    }
+
+    .url-panel[open] summary {
+      border-bottom: 1px solid var(--border);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .url-panel .chev {
+      flex: none;
+      color: var(--muted);
+      transition: transform 0.15s;
+    }
+
+    .url-panel[open] .chev {
+      transform: rotate(180deg);
+    }
+
+    .url-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
       gap: 12px;
     }
 
-    .format-option {
-      flex: 1;
+    .url-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-soft);
     }
 
-    .format-option input[type="radio"] {
-      display: none;
+    #url {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    #url::placeholder {
+      color: #a49d92;
+    }
+
+    #url:disabled {
+      background: #f1eee8;
+      cursor: not-allowed;
+    }
+
+    #url[aria-invalid="true"] {
+      border-color: var(--error-ink);
+    }
+
+    .format-options {
+      border: 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .format-option {
+      position: relative;
+    }
+
+    .format-option input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .format-option label {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 12px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
+      padding: 9px 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 9px;
+      background: var(--surface);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-soft);
       text-align: center;
-    }
-
-    .format-option input[type="radio"]:checked + label {
-      border-color: #e94560;
-      background: #e94560;
-      color: white;
-    }
-
-    .format-option label:hover {
-      border-color: #c73e54;
-    }
-
-    button {
-      width: 100%;
-      padding: 14px;
-      background: #e94560;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
 
-    @media (max-width: 560px) {
-      .container {
-        padding: 28px;
-      }
-
-      .format-options {
-        grid-template-columns: 1fr;
-      }
+    .format-option input:checked + label {
+      border-color: var(--accent);
+      background: #f1efe9;
+      color: var(--ink);
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1px var(--accent);
     }
 
-    button:hover:not(:disabled) {
-      background: #c73e54;
+    .format-option input:focus-visible + label {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
     }
 
-    button:disabled {
-      background: #ccc;
+    .format-option input:disabled + label {
+      opacity: 0.55;
       cursor: not-allowed;
     }
 
+    .url-hint {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
     .status {
-      margin-top: 24px;
-      padding: 16px;
-      border-radius: 8px;
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
       display: none;
     }
 
     .status.processing {
       display: block;
-      background: #e3f2fd;
-      color: #1976d2;
+      background: var(--processing-bg);
+      color: var(--processing-ink);
     }
 
     .status.success {
       display: block;
-      background: #e8f5e9;
-      color: #2e7d32;
+      background: var(--success-bg);
+      color: var(--success-ink);
+      text-align: center;
     }
 
     .status.error {
       display: block;
-      background: #ffebee;
-      color: #c62828;
+      background: var(--error-bg);
+      color: var(--error-ink);
+    }
+
+    .status a {
+      color: inherit;
+      font-weight: 600;
     }
 
     .spinner {
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid #1976d2;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
       border-top-color: transparent;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-right: 8px;
-      vertical-align: middle;
+      vertical-align: -2px;
     }
 
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    .download-link {
+    .status .download-link {
       display: inline-block;
       margin-top: 12px;
       padding: 10px 20px;
-      background: #2e7d32;
-      color: white;
+      background: var(--accent);
+      color: var(--accent-ink);
       text-decoration: none;
       font-weight: 600;
-      border-radius: 6px;
-      transition: background 0.2s;
+      font-size: 14px;
+      border-radius: 9px;
+      transition: background 0.15s;
     }
 
     .download-link:hover {
-      background: #1b5e20;
-      text-decoration: none;
+      background: var(--accent-hover);
     }
 
     .filename {
       display: block;
       margin-top: 8px;
       font-size: 12px;
-      color: #666;
+      opacity: 0.85;
       word-break: break-all;
       max-width: 100%;
       overflow: hidden;
@@ -208,73 +547,180 @@
       white-space: nowrap;
     }
 
-    .status.success {
-      display: block;
-      background: #e8f5e9;
-      color: #2e7d32;
-      text-align: center;
-    }
-
     .footer {
-      margin-top: 24px;
+      margin: 32px 0 8px;
       text-align: center;
-      color: #999;
-      font-size: 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
 
     .footer a {
-      color: #666;
+      color: var(--muted);
       text-decoration: none;
     }
 
     .footer a:hover {
       text-decoration: underline;
     }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 28px 14px 24px;
+      }
+
+      .hero {
+        margin: 32px 0 22px;
+      }
+
+      .panel {
+        padding: 20px;
+      }
+
+      .dropzone {
+        padding: 26px 14px;
+      }
+
+      .format-options {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .panel {
+        padding: 16px;
+      }
+
+      .segmented label {
+        font-size: 13px;
+        padding: 9px 6px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>YouTube to MP3/MP4/Transcript Converter</h1>
-    <p class="subtitle">Download videos as audio, video, or text transcripts</p>
-
-    <form id="converterForm">
-      <div class="form-group">
-        <label for="url">Video URL</label>
-        <input
-          type="url"
-          id="url"
-          name="url"
-          placeholder="https://www.youtube.com/watch?v=... or any video URL"
-          required
-        >
+  <div class="page">
+    <header class="masthead">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="19" height="19" rx="6" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 14.5v-5M12 16.5v-9M16 13.5v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="brand-name">Transcribe</span>
       </div>
+      <p class="workspace-label">Local workspace</p>
+    </header>
 
-      <div class="form-group">
-        <label>Format</label>
-        <div class="format-options">
-          <div class="format-option">
-            <input type="radio" id="mp3" name="format" value="mp3" checked>
-            <label for="mp3">MP3 (Audio)</label>
+    <main class="workspace">
+      <section class="hero">
+        <h1>Your video. In words.</h1>
+        <p class="hero-sub">Turn a recording into a transcript, extract audio, or remove vocals.</p>
+      </section>
+
+      <section class="panel" aria-label="Transcribe or convert">
+        <form id="converterForm" novalidate>
+          <fieldset class="segmented">
+            <legend class="sr-only">Choose a task</legend>
+            <div class="segmented-track">
+              <input type="radio" id="taskTranscribe" name="task" value="transcribe" checked>
+              <label for="taskTranscribe">Transcribe</label>
+              <input type="radio" id="taskMp3" name="task" value="mp3">
+              <label for="taskMp3">Extract MP3</label>
+              <input type="radio" id="taskInstrumental" name="task" value="instrumental">
+              <label for="taskInstrumental">Instrumental</label>
+            </div>
+          </fieldset>
+
+          <label class="sr-only" for="uploadFile">Transcribe a local video or audio file</label>
+          <input type="file" id="uploadFile" name="file" accept="audio/*,video/*" class="sr-only" tabindex="-1">
+
+          <button type="button" id="dropzone" class="dropzone" aria-describedby="uploadHelp">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5L13.5 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M13.5 3v5.5H19" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M9 14.75v.5M12 12.75v4.5M15 14.25v1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span class="dropzone-title">Choose a video or audio file</span>
+            <span class="dropzone-hint">or drag and drop it here</span>
+          </button>
+
+          <div id="fileChip" class="file-chip" hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5L13.5 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M13.5 3v5.5H19" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+            <span class="file-meta">
+              <span id="fileName" class="file-name"></span>
+              <span id="fileSize" class="file-size"></span>
+            </span>
+            <button type="button" id="removeFile" class="file-remove" aria-label="Remove selected file">&times;</button>
           </div>
-          <div class="format-option">
-            <input type="radio" id="mp4" name="format" value="mp4">
-            <label for="mp4">MP4 (Video)</label>
-          </div>
-          <div class="format-option">
-            <input type="radio" id="transcript" name="format" value="transcript">
-            <label for="transcript">Transcript</label>
-          </div>
-        </div>
-      </div>
 
-      <button type="submit" id="submitBtn">Download</button>
-    </form>
+          <p class="upload-help" id="uploadHelp">Checking upload limit…</p>
 
-    <div id="status" class="status"></div>
+          <p class="upload-help" id="instrumentalHelp" hidden>Remove vocals and download a WAV instrumental. This can take several minutes; faint vocals or other artifacts may remain.</p>
 
-    <div class="footer">
-      <a href="/health">Check API Status</a>
-    </div>
+          <button type="submit" id="submitBtn">Transcribe</button>
+
+          <details id="urlDetails" class="url-panel">
+            <summary>
+              <span>Use a video link</span>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </summary>
+            <div class="url-body">
+              <label class="url-label" for="url">Video URL</label>
+              <input
+                type="url"
+                id="url"
+                name="url"
+                placeholder="https://www.youtube.com/watch?v=… or any video URL"
+                autocomplete="off"
+              >
+              <fieldset class="format-options">
+                <legend class="sr-only">Output format</legend>
+                <div class="format-option">
+                  <input type="radio" id="mp3" name="format" value="mp3" checked>
+                  <label for="mp3">MP3 (Audio)</label>
+                </div>
+                <div class="format-option">
+                  <input type="radio" id="mp4" name="format" value="mp4">
+                  <label for="mp4">MP4 (Video)</label>
+                </div>
+                <div class="format-option">
+                  <input type="radio" id="transcript" name="format" value="transcript">
+                  <label for="transcript">Transcript</label>
+                </div>
+                <div class="format-option">
+                  <input type="radio" id="instrumental" name="format" value="instrumental">
+                  <label for="instrumental">Instrumental (WAV)</label>
+                </div>
+              </fieldset>
+              <p class="url-hint">MP3, MP4, and Instrumental accept YouTube links. Transcript accepts any video URL.</p>
+            </div>
+          </details>
+        </form>
+
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </section>
+
+      <footer class="footer">
+        <p>Processed on your home server</p>
+        <a href="/health">Check API status</a>
+      </footer>
+    </main>
   </div>
 
   <script src="/app.js"></script>

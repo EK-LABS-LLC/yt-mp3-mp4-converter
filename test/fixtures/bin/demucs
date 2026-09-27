@@ -1,0 +1,11 @@
+#!/usr/bin/env bun
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+if (process.env.DEMUCS_FIXTURE_MODE === 'fail') { console.error('fixture separation failed'); process.exit(1); }
+if (process.env.DEMUCS_FIXTURE_MODE === 'empty') process.exit(0);
+if (process.env.DEMUCS_FIXTURE_MODE === 'timeout') await Bun.sleep(10000);
+const output = args[args.indexOf('-o') + 1];
+const directory = join(output, 'htdemucs', 'audio');
+await mkdir(directory, { recursive: true });
+await Bun.write(join(directory, 'no_vocals.wav'), 'RIFF fixture instrumental WAV audio without vocals '.repeat(2));

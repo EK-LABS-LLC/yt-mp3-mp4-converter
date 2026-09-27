@@ -5,9 +5,15 @@ All notable changes from Ralph Wiggum Loop sessions.
 ## [Unreleased]
 
 ### Added
+- Instrumental WAV downloads remove vocals locally from YouTube links or uploaded audio/video using Demucs, with queued processing and a configurable timeout
+- Local video uploads can extract MP3 audio, with two jobs processing simultaneously by default and additional jobs queued
+- Browser upload transcription streams audio and video to disk with configurable upload limits, local Whisper processing, queue position updates, and transcript download
+- Durable shared FIFO jobs survive restarts, retain completed downloads for three days by default, and bound waiting jobs and upload storage
+- Graceful shutdown drains active work, preserves queued jobs, and reports interrupted processing after restart
 - `get_video_transcript` MCP tool that transcribes any video URL, falling back to local speech-to-text when captions are unavailable
 - Web app and `POST /api/convert` transcript jobs accept any video URL, not just YouTube; the CLI accepts local media file paths
 - Local speech-to-text (whisper.cpp) fallback for videos without captions: `scripts/download-whisper-model.sh` fetches the default model, `scripts/setup.sh` installs whisper-cli on macOS and downloads the model, and the Docker image builds whisper-cli from source and bakes in the base model
+- Tests for URL conversion in every format, health checks, fail-closed storage errors, startup recovery, periodic cleanup, whisper timeouts, and MP3 extraction, so `bun run check` meets the per-file coverage thresholds
 - TypeScript behavior contracts, Rust migration architecture, complete test migration inventory, and deterministic CLI/MCP/HTTP golden parity fixtures
 - **Enhanced input sanitization** (`src/yt-dlp.ts`, `src/schemas.ts`)
   - Comprehensive command injection detection with 30+ pattern checks
@@ -29,6 +35,8 @@ All notable changes from Ralph Wiggum Loop sessions.
   - URL validation tests with malicious inputs
 
 ### Changed
+- The web workspace puts local transcription and MP3 extraction first, with drag-and-drop uploads, a responsive neutral design, and video links available in a secondary panel
+- Docker whisper builds use portable static CPU settings with bounded parallelism; the model download is mandatory and health checks verify the HTTP API, transcription tools, model, ffmpeg, and yt-dlp
 - Updated `src/index.ts` to use new Zod schemas from `src/schemas.ts`
 - Enhanced job ID validation in `/api/jobs/:jobId` endpoint
 - Enhanced job ID validation in `/downloads/:jobId` endpoint

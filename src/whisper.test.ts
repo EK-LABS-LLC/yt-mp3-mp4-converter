@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { extractWav, transcribeAudioFile, transcribeWav } from "./whisper";
+import { extractMp3File, extractWav, transcribeAudioFile, transcribeWav, whisperConfig } from "./whisper";
 import {
+  NetworkTimeoutError,
   TranscriptionError,
   WhisperUnavailableError,
 } from "./errors";
@@ -29,6 +30,7 @@ beforeAll(async () => {
     "WHISPER_FIXTURE_MODE",
     "WHISPER_FIXTURE_ECHO_OUTPUT",
     "FFMPEG_FIXTURE_MODE",
+    "WHISPER_FIXTURE_DELAY_MS",
   ] as const) {
     originalEnv[key] = process.env[key];
   }
@@ -172,5 +174,47 @@ describe("whisper speech-to-text engine", () => {
     } finally {
       process.env.WHISPER_FIXTURE_ECHO_OUTPUT = previous;
     }
+  });
+
+  test("kills whisper-cli and reports a timeout when it outlives its budget", async () => {
+    const wavPath = resolve(tempDir, "slow.wav");
+    await Bun.write(wavPath, new Uint8Array([0x52, 0x49, 0x46, 0x46]));
+    process.env.WHISPER_FIXTURE_DELAY_MS = "5000";
+    try {
+      await expect(transcribeWav(wavPath, { ...whisperConfig(), timeoutSeconds: 1 })).rejects.toBeInstanceOf(
+        NetworkTimeoutError,
+      );
+      expect(await Bun.file(`${wavPath}.txt`).exists()).toBe(false);
+    } finally {
+      delete process.env.WHISPER_FIXTURE_DELAY_MS;
+    }
+  });
+
+  test("reports an extraction that writes no regular WAV file", async () => {
+    await expect(extractWav(resolve(tempDir, "source.mp4"), "/dev/null")).rejects.toThrow(
+      "audio extraction produced no WAV output",
+    );
+  });
+
+  test("extracts an MP3 from a local media file", async () => {
+    const input = resolve(tempDir, "song.mp4");
+    await Bun.write(input, "fake-video-bytes");
+    const output = resolve(tempDir, "mp3-out", "audio.mp3");
+
+    expect(await extractMp3File(input, output)).toBe(output);
+    expect(await Bun.file(output).text()).toStartWith("ID3");
+  });
+
+  test("reports MP3 extraction failures as transcription errors", async () => {
+    const input = resolve(tempDir, "song.mp4");
+    process.env.FFMPEG_FIXTURE_MODE = "fail";
+    try {
+      await expect(extractMp3File(input, resolve(tempDir, "failed.mp3"))).rejects.toThrow(
+        "fixture ffmpeg failed to extract audio",
+      );
+    } finally {
+      delete process.env.FFMPEG_FIXTURE_MODE;
+    }
+    await expect(extractMp3File(input, "/dev/null")).rejects.toThrow("audio extraction produced no MP3 output");
   });
 });

@@ -13,6 +13,7 @@ import {
 import { mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { isIP } from "node:net";
 import { basename, dirname, extname, resolve } from "node:path";
+import { instrumentalTimeoutSeconds } from "./instrumental.js";
 import { transcribeAudioFile } from "./whisper.js";
 
 // YouTube URL validation regex
@@ -42,7 +43,8 @@ export const FORMAT_TIMEOUT_SECONDS: Record<OutputFormat, number> = {
  * Longest a conversion job can legitimately take: metadata lookup plus the
  * per-format download budget.
  */
-export function pollTimeoutSeconds(format: OutputFormat): number {
+export function pollTimeoutSeconds(format: OutputFormat | "instrumental"): number {
+  if (format === "instrumental") return METADATA_TIMEOUT_SECONDS + AUDIO_DOWNLOAD_TIMEOUT_SECONDS + 900 + instrumentalTimeoutSeconds();
   return METADATA_TIMEOUT_SECONDS + FORMAT_TIMEOUT_SECONDS[format];
 }
 

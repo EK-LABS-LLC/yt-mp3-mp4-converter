@@ -10,18 +10,25 @@ services:
       - PORT=3000
       - DOWNLOAD_DIR=/tmp/yt-converter-downloads
       - NODE_ENV=production
-      # Optional: Max file size in MB
-      - MAX_FILE_SIZE_MB=500
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-500}
+      - STATE_DIR=/tmp/yt-converter-downloads/.state
+      - UPLOAD_DIR=/tmp/yt-converter-downloads/.uploads
+      - JOB_CONCURRENCY=${JOB_CONCURRENCY:-2}
+      - MAX_QUEUE_SIZE=${MAX_QUEUE_SIZE:-10}
+      - MAX_PENDING_UPLOAD_BYTES=${MAX_PENDING_UPLOAD_BYTES:-4294967296}
+      - MIN_FREE_DISK_BYTES=${MIN_FREE_DISK_BYTES:-2147483648}
+      - JOB_TTL_SECONDS=${JOB_TTL_SECONDS:-259200}
+      - CLEANUP_INTERVAL_SECONDS=${CLEANUP_INTERVAL_SECONDS:-3600}
+      - SHUTDOWN_GRACE_SECONDS=${SHUTDOWN_GRACE_SECONDS:-300}
+      - INSTRUMENTAL_TIMEOUT_SECONDS=${INSTRUMENTAL_TIMEOUT_SECONDS:-7200}
+      - UPLOAD_IDLE_TIMEOUT_SECONDS=${UPLOAD_IDLE_TIMEOUT_SECONDS:-60}
     volumes:
-      # Persist downloads to host (optional). The whisper model is baked into
-      # the image at /models (WHISPER_MODEL_PATH) when the build can download
-      # it; do not mount a directory over /models or an empty volume would
-      # hide the model. If the bake was skipped (rate limited), mount a
-      # directory containing ggml-base.en.bin at /models to enable STT.
+      # Persist job state, uploads, and completed downloads together.
       - ./downloads:/tmp/yt-converter-downloads
+    stop_grace_period: 330s
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
