@@ -1,4 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { JobStore } from "./jobs";
@@ -48,11 +55,19 @@ afterEach(async () => {
   }
 });
 
-async function isolatedRuntime(overrides: Partial<Runtime["config"]> = {}, dir?: string) {
-  const root = dir ?? await mkdtemp("/tmp/converter-isolated-test-");
+async function isolatedRuntime(
+  overrides: Partial<Runtime["config"]> = {},
+  dir?: string,
+) {
+  const root = dir ?? (await mkdtemp("/tmp/converter-isolated-test-"));
   const { createApplication } = await import("./index");
-  const created = await createApplication({ downloadDir: root, uploadDir: join(root, ".uploads"), minFreeDiskBytes: 0, ...overrides });
-  const entry = isolated.find(item => item.dir === root);
+  const created = await createApplication({
+    downloadDir: root,
+    uploadDir: join(root, ".uploads"),
+    minFreeDiskBytes: 0,
+    ...overrides,
+  });
+  const entry = isolated.find((item) => item.dir === root);
   if (entry) entry.runtime = created;
   else isolated.push({ runtime: created, dir: root });
   return created;
@@ -64,12 +79,21 @@ async function isolatedDir() {
   return dir;
 }
 
-const post = (target: Runtime, body: string) => target.app.fetch(new Request("http://localhost/api/convert", { method: "POST", body, headers: { "Content-Type": "application/json" } }));
+const post = (target: Runtime, body: string) =>
+  target.app.fetch(
+    new Request("http://localhost/api/convert", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
 
 async function finished(target: Runtime, jobId: string) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const job = await (await target.app.fetch(new Request(`http://localhost/api/jobs/${jobId}`))).json() as { status: string; error?: string; filename?: string };
+    const job = (await (
+      await target.app.fetch(new Request(`http://localhost/api/jobs/${jobId}`))
+    ).json()) as { status: string; error?: string; filename?: string };
     if (!["queued", "processing"].includes(job.status)) return job;
     await Bun.sleep(10);
   }
@@ -78,26 +102,58 @@ async function finished(target: Runtime, jobId: string) {
 
 describe("browser transcription upload", () => {
   test("accepts a raw media upload and returns the shared polling contract", async () => {
-    const response = await app.fetch(new Request("http://localhost/api/transcribe", { method: "POST", body: "fixture media", headers: { "Content-Type": "application/octet-stream", "X-Upload-Filename": "lecture.mp4" } }));
+    const response = await app.fetch(
+      new Request("http://localhost/api/transcribe", {
+        method: "POST",
+        body: "fixture media",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Upload-Filename": "lecture.mp4",
+        },
+      }),
+    );
     expect(response.status).toBe(202);
-    const started = await response.json() as { jobId: string; status: string };
+    const started = (await response.json()) as {
+      jobId: string;
+      status: string;
+    };
     expect(started.status).toBe("queued");
 
     let job: { status: string; filename?: string } = { status: "processing" };
     for (let attempt = 0; attempt < 30; attempt++) {
       await Bun.sleep(10);
-      job = await (await app.fetch(new Request(`http://localhost/api/jobs/${started.jobId}`))).json() as typeof job;
+      job = (await (
+        await app.fetch(
+          new Request(`http://localhost/api/jobs/${started.jobId}`),
+        )
+      ).json()) as typeof job;
       if (!["queued", "processing"].includes(job.status)) break;
     }
     expect(job.status).toBe("completed");
-    const download = await app.fetch(new Request(`http://localhost/downloads/${started.jobId}`));
-    expect(await download.text()).toContain("local speech-to-text fixture transcript");
+    const download = await app.fetch(
+      new Request(`http://localhost/downloads/${started.jobId}`),
+    );
+    expect(await download.text()).toContain(
+      "local speech-to-text fixture transcript",
+    );
     expect(await readdir(uploadDir)).toHaveLength(0);
   });
 
   test("rejects empty and non-media uploads", async () => {
-    for (const file of [new File([], "empty.mp4", { type: "video/mp4" }), new File(["x"], "notes.txt", { type: "text/plain" })]) {
-      const response = await app.fetch(new Request("http://localhost/api/transcribe", { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream", "X-Upload-Filename": encodeURIComponent(file.name) } }));
+    for (const file of [
+      new File([], "empty.mp4", { type: "video/mp4" }),
+      new File(["x"], "notes.txt", { type: "text/plain" }),
+    ]) {
+      const response = await app.fetch(
+        new Request("http://localhost/api/transcribe", {
+          method: "POST",
+          body: file,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Upload-Filename": encodeURIComponent(file.name),
+          },
+        }),
+      );
       expect([400, 415]).toContain(response.status);
     }
   });
@@ -109,27 +165,46 @@ describe("URL conversion", () => {
     ["mp4", "video/mp4", "Fixture Video_ E2E Test.mp4"],
     ["transcript", "text/plain; charset=utf-8", "Fixture Video_ E2E Test.txt"],
     ["instrumental", "audio/wav", "Fixture Video_ E2E Test_instrumental.wav"],
-  ])("converts a video URL to %s and serves the result", async (format, contentType) => {
-    const response = await post(runtime, JSON.stringify({ url: videoUrl, format }));
-    expect(response.status).toBe(202);
-    const started = await response.json() as { jobId: string; checkUrl: string; message: string };
-    expect(started.message).toBe("Conversion queued");
-    expect(started.checkUrl).toBe(`/api/jobs/${started.jobId}`);
+  ])(
+    "converts a video URL to %s and serves the result",
+    async (format, contentType) => {
+      const response = await post(
+        runtime,
+        JSON.stringify({ url: videoUrl, format }),
+      );
+      expect(response.status).toBe(202);
+      const started = (await response.json()) as {
+        jobId: string;
+        checkUrl: string;
+        message: string;
+      };
+      expect(started.message).toBe("Conversion queued");
+      expect(started.checkUrl).toBe(`/api/jobs/${started.jobId}`);
 
-    const job = await finished(runtime, started.jobId);
-    expect(job).toMatchObject({ status: "completed" });
-    const download = await app.fetch(new Request(`http://localhost/downloads/${started.jobId}`));
-    expect(download.status).toBe(200);
-    expect(download.headers.get("Content-Type")).toBe(contentType);
-    expect(download.headers.get("Content-Disposition")).toContain(`filename="${job.filename}"`);
-    expect((await download.arrayBuffer()).byteLength).toBeGreaterThan(0);
-  });
+      const job = await finished(runtime, started.jobId);
+      expect(job).toMatchObject({ status: "completed" });
+      const download = await app.fetch(
+        new Request(`http://localhost/downloads/${started.jobId}`),
+      );
+      expect(download.status).toBe(200);
+      expect(download.headers.get("Content-Type")).toBe(contentType);
+      expect(download.headers.get("Content-Disposition")).toContain(
+        `filename="${job.filename}"`,
+      );
+      expect((await download.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    },
+  );
 
   test("removes the downloaded source after producing an instrumental", async () => {
-    const response = await post(runtime, JSON.stringify({ url: videoUrl, format: "instrumental" }));
-    const { jobId } = await response.json() as { jobId: string };
+    const response = await post(
+      runtime,
+      JSON.stringify({ url: videoUrl, format: "instrumental" }),
+    );
+    const { jobId } = (await response.json()) as { jobId: string };
     await finished(runtime, jobId);
-    expect((await readdir(join(downloadDir, ".jobs", jobId))).sort()).toEqual(["result.wav"]);
+    expect((await readdir(join(downloadDir, ".jobs", jobId))).sort()).toEqual([
+      "result.wav",
+    ]);
   });
 
   test("rejects malformed JSON and invalid requests", async () => {
@@ -137,16 +212,26 @@ describe("URL conversion", () => {
     expect(malformed.status).toBe(400);
     expect(await malformed.json()).toMatchObject({ code: "INVALID_JSON" });
 
-    const invalid = await post(runtime, JSON.stringify({ url: "not a url", format: "mp3" }));
+    const invalid = await post(
+      runtime,
+      JSON.stringify({ url: "not a url", format: "mp3" }),
+    );
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   test("refuses work when free disk space is below the configured floor", async () => {
-    const target = await isolatedRuntime({ minFreeDiskBytes: Number.MAX_SAFE_INTEGER });
-    const response = await post(target, JSON.stringify({ url: videoUrl, format: "mp3" }));
+    const target = await isolatedRuntime({
+      minFreeDiskBytes: Number.MAX_SAFE_INTEGER,
+    });
+    const response = await post(
+      target,
+      JSON.stringify({ url: videoUrl, format: "mp3" }),
+    );
     expect(response.status).toBe(507);
-    expect(await response.json()).toMatchObject({ code: "INSUFFICIENT_STORAGE" });
+    expect(await response.json()).toMatchObject({
+      code: "INSUFFICIENT_STORAGE",
+    });
     expect(target.store.allJobs()).toHaveLength(0);
   });
 
@@ -154,32 +239,51 @@ describe("URL conversion", () => {
     const stateDir = await isolatedDir();
     const target = await isolatedRuntime({ stateDir });
     await rm(target.config.downloadDir, { recursive: true, force: true });
-    const response = await post(target, JSON.stringify({ url: videoUrl, format: "mp3" }));
+    const response = await post(
+      target,
+      JSON.stringify({ url: videoUrl, format: "mp3" }),
+    );
     expect(response.status).toBe(507);
-    expect(await response.json()).toMatchObject({ error: "Cannot verify free disk space" });
+    expect(await response.json()).toMatchObject({
+      error: "Cannot verify free disk space",
+    });
   });
 
   test("fails closed when job storage breaks", async () => {
     const target = await isolatedRuntime();
     target.store.close();
-    const broken = await post(target, JSON.stringify({ url: videoUrl, format: "mp3" }));
+    const broken = await post(
+      target,
+      JSON.stringify({ url: videoUrl, format: "mp3" }),
+    );
     expect(broken.status).toBe(500);
     expect(await broken.json()).toMatchObject({ code: "INTERNAL_ERROR" });
 
-    const after = await post(target, JSON.stringify({ url: videoUrl, format: "mp3" }));
+    const after = await post(
+      target,
+      JSON.stringify({ url: videoUrl, format: "mp3" }),
+    );
     expect(after.status).toBe(503);
     expect(after.headers.get("Retry-After")).toBe("5");
     expect(await after.json()).toMatchObject({ code: "STORAGE_UNAVAILABLE" });
 
-    const health = await target.app.fetch(new Request("http://localhost/health"));
+    const health = await target.app.fetch(
+      new Request("http://localhost/health"),
+    );
     expect(health.status).toBe(503);
-    expect(await health.json()).toMatchObject({ status: "unhealthy", error: "Job storage is unavailable" });
+    expect(await health.json()).toMatchObject({
+      status: "unhealthy",
+      error: "Job storage is unavailable",
+    });
   });
 
   test("rejects new work while draining", async () => {
     const target = await isolatedRuntime();
     target.beginDrain();
-    const response = await post(target, JSON.stringify({ url: videoUrl, format: "mp3" }));
+    const response = await post(
+      target,
+      JSON.stringify({ url: videoUrl, format: "mp3" }),
+    );
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: "SHUTTING_DOWN" });
   });
@@ -190,7 +294,9 @@ describe("health", () => {
     const response = await app.fetch(new Request("http://localhost/health"));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      status: "healthy", draining: false, storageCheckAvailable: true,
+      status: "healthy",
+      draining: false,
+      storageCheckAvailable: true,
       ytDlp: { installed: true, version: "fixture-yt-dlp-1.0.0" },
       ffmpeg: { installed: true, version: "ffmpeg version fixture-1.0.0" },
       whisper: { installed: true, model: true },
@@ -202,15 +308,27 @@ describe("health", () => {
     const previous = process.env.WHISPER_MODEL_PATH;
     process.env.WHISPER_MODEL_PATH = "/tmp/converter-missing-model.bin";
     try {
-      const response = await target.app.fetch(new Request("http://localhost/health"));
+      const response = await target.app.fetch(
+        new Request("http://localhost/health"),
+      );
       expect(response.status).toBe(503);
-      expect(await response.json()).toMatchObject({ status: "unhealthy", whisper: { installed: true, model: false } });
-    } finally { process.env.WHISPER_MODEL_PATH = previous; }
+      expect(await response.json()).toMatchObject({
+        status: "unhealthy",
+        whisper: { installed: true, model: false },
+      });
+    } finally {
+      process.env.WHISPER_MODEL_PATH = previous;
+    }
 
     target.beginDrain();
-    const draining = await target.app.fetch(new Request("http://localhost/health"));
+    const draining = await target.app.fetch(
+      new Request("http://localhost/health"),
+    );
     expect(draining.status).toBe(503);
-    expect(await draining.json()).toMatchObject({ status: "unhealthy", draining: true });
+    expect(await draining.json()).toMatchObject({
+      status: "unhealthy",
+      draining: true,
+    });
   });
 
   test("reports unhealthy when a tool cannot be started", async () => {
@@ -219,8 +337,13 @@ describe("health", () => {
     try {
       const response = await app.fetch(new Request("http://localhost/health"));
       expect(response.status).toBe(503);
-      expect(await response.json()).toMatchObject({ status: "unhealthy", error: "A required transcription tool is unavailable" });
-    } finally { process.env.WHISPER_CLI_PATH = previous; }
+      expect(await response.json()).toMatchObject({
+        status: "unhealthy",
+        error: "A required transcription tool is unavailable",
+      });
+    } finally {
+      process.env.WHISPER_CLI_PATH = previous;
+    }
   });
 });
 
@@ -251,26 +374,87 @@ describe("startup recovery and cleanup", () => {
     const unownedSource = join(dir, "elsewhere.source");
     await writeFile(unownedSource, "not ours");
 
-    const store = await JobStore.open({ stateDir: join(dir, ".state"), maxQueueSize: 10, maxPendingUploadBytes: 1000, jobTtlSeconds: 60 });
-    store.enqueueUrl({ id: ids.expired, kind: "url", format: "mp3", url: videoUrl });
-    store.complete(store.claimNext()!.id, { outputPath: join(work, ids.expired, "result.mp3"), filename: "old.mp3", sourceReleased: true, now: Date.now() - 120_000 });
-    for (const [id, sourcePath] of [[ids.retainedSource, join(uploads, `${ids.retainedSource}.source`)], [ids.unownedSource, unownedSource]] as const) {
-      store.reserveUpload({ id, reservedBytes: 10, partialPath: join(uploads, `${id}.part`), createdAt: 1 });
-      store.enqueueUpload({ id, kind: "upload", format: "mp3", sourcePath, sourceBytes: 5 }, id);
-      store.fail(store.claimNext()!.id, { error: "boom", errorCode: "FAILED", sourceReleased: false });
+    const store = await JobStore.open({
+      stateDir: join(dir, ".state"),
+      maxQueueSize: 10,
+      maxPendingUploadBytes: 1000,
+      jobTtlSeconds: 60,
+    });
+    store.enqueueUrl({
+      id: ids.expired,
+      kind: "url",
+      format: "mp3",
+      url: videoUrl,
+    });
+    store.complete(store.claimNext()!.id, {
+      outputPath: join(work, ids.expired, "result.mp3"),
+      filename: "old.mp3",
+      sourceReleased: true,
+      now: Date.now() - 120_000,
+    });
+    for (const [id, sourcePath] of [
+      [ids.retainedSource, join(uploads, `${ids.retainedSource}.source`)],
+      [ids.unownedSource, unownedSource],
+    ] as const) {
+      store.reserveUpload({
+        id,
+        reservedBytes: 10,
+        partialPath: join(uploads, `${id}.part`),
+        createdAt: 1,
+      });
+      store.enqueueUpload(
+        { id, kind: "upload", format: "mp3", sourcePath, sourceBytes: 5 },
+        id,
+      );
+      store.fail(store.claimNext()!.id, {
+        error: "boom",
+        errorCode: "FAILED",
+        sourceReleased: false,
+      });
     }
-    store.enqueueUrl({ id: ids.interrupted, kind: "url", format: "mp3", url: videoUrl });
+    store.enqueueUrl({
+      id: ids.interrupted,
+      kind: "url",
+      format: "mp3",
+      url: videoUrl,
+    });
     store.claimNext();
-    store.reserveUpload({ id: ids.missingSource, reservedBytes: 10, partialPath: join(uploads, `${ids.missingSource}.part`), createdAt: 1 });
-    store.enqueueUpload({ id: ids.missingSource, kind: "upload", format: "transcript", sourcePath: join(uploads, `${ids.missingSource}.source`), sourceBytes: 5 }, ids.missingSource);
-    store.reserveUpload({ id: ids.staleReservation, reservedBytes: 10, partialPath: join(uploads, `${ids.staleReservation}.part`), createdAt: 2 });
+    store.reserveUpload({
+      id: ids.missingSource,
+      reservedBytes: 10,
+      partialPath: join(uploads, `${ids.missingSource}.part`),
+      createdAt: 1,
+    });
+    store.enqueueUpload(
+      {
+        id: ids.missingSource,
+        kind: "upload",
+        format: "transcript",
+        sourcePath: join(uploads, `${ids.missingSource}.source`),
+        sourceBytes: 5,
+      },
+      ids.missingSource,
+    );
+    store.reserveUpload({
+      id: ids.staleReservation,
+      reservedBytes: 10,
+      partialPath: join(uploads, `${ids.staleReservation}.part`),
+      createdAt: 2,
+    });
     store.close();
 
     const target = await isolatedRuntime({}, dir);
-    const job = async (id: string) => (await target.app.fetch(new Request(`http://localhost/api/jobs/${id}`)));
+    const job = async (id: string) =>
+      await target.app.fetch(new Request(`http://localhost/api/jobs/${id}`));
 
-    expect(await (await job(ids.interrupted)).json()).toMatchObject({ status: "failed", errorCode: "PROCESS_INTERRUPTED" });
-    expect(await (await job(ids.missingSource)).json()).toMatchObject({ status: "failed", errorCode: "SOURCE_MISSING" });
+    expect(await (await job(ids.interrupted)).json()).toMatchObject({
+      status: "failed",
+      errorCode: "PROCESS_INTERRUPTED",
+    });
+    expect(await (await job(ids.missingSource)).json()).toMatchObject({
+      status: "failed",
+      errorCode: "SOURCE_MISSING",
+    });
     expect((await job(ids.expired)).status).toBe(404);
     expect(target.store.get(ids.expired)).toBeUndefined();
     expect(target.store.reservations()).toEqual([]);
@@ -286,13 +470,50 @@ describe("startup recovery and cleanup", () => {
     const id = ids.staleReservation;
     const partial = join(target.config.uploadDir, `${id}.part`);
     await writeFile(partial, "partial");
-    target.store.reserveUpload({ id, reservedBytes: 10, partialPath: partial, createdAt: Date.now() });
+    target.store.reserveUpload({
+      id,
+      reservedBytes: 10,
+      partialPath: partial,
+      createdAt: Date.now(),
+    });
 
     const deadline = Date.now() + 3000;
-    while (target.store.reservations().length > 0 && Date.now() < deadline) await Bun.sleep(20);
+    while (target.store.reservations().length > 0 && Date.now() < deadline)
+      await Bun.sleep(20);
 
     expect(target.store.reservations()).toEqual([]);
     expect(await Bun.file(partial).exists()).toBe(false);
+  });
+
+  test("keeps the source of an upload that was queued after cleanup listed its reservation", async () => {
+    const target = await isolatedRuntime();
+    target.queue.start = () => {};
+    const response = await target.app.fetch(
+      new Request("http://localhost/api/transcribe", {
+        method: "POST",
+        body: "fixture media",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Upload-Filename": "lecture.mp4",
+        },
+      }),
+    );
+    expect(response.status).toBe(202);
+    const { jobId } = (await response.json()) as { jobId: string };
+    const source = target.store.get(jobId)!.sourcePath!;
+    target.store.reservations = () => [
+      {
+        id: jobId,
+        reservedBytes: 13,
+        partialPath: join(target.config.uploadDir, `${jobId}.part`),
+        createdAt: Date.now(),
+      },
+    ];
+
+    await target.cleanup();
+
+    expect(target.store.get(jobId)?.status).toBe("queued");
+    expect(await Bun.file(source).exists()).toBe(true);
   });
 });
 
@@ -300,7 +521,12 @@ describe("server", () => {
   test("serves the application over HTTP", async () => {
     const dir = await isolatedDir();
     const { startServer } = await import("./index");
-    const started = await startServer({ downloadDir: dir, uploadDir: join(dir, ".uploads"), minFreeDiskBytes: 0, port: 0 });
+    const started = await startServer({
+      downloadDir: dir,
+      uploadDir: join(dir, ".uploads"),
+      minFreeDiskBytes: 0,
+      port: 0,
+    });
     try {
       const response = await fetch(new URL("/health", started.server.url));
       expect(response.status).toBe(200);

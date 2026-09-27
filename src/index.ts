@@ -141,7 +141,7 @@ export async function createApplication(overrides: Partial<ServerConfig> = {}) {
     if (cleanupRunning) return cleanupRunning;
     cleanupRunning = (async () => {
       for (const reservation of store.reservations()) {
-        if (activeReservations.has(reservation.id)) continue;
+        if (activeReservations.has(reservation.id) || !store.getUploadReservation(reservation.id)) continue;
         try {
           await rm(join(config.uploadDir, `${reservation.id}.part`), { force: true });
           await rm(join(config.uploadDir, `${reservation.id}.source`), { force: true });
