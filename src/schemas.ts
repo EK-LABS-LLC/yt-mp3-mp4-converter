@@ -54,12 +54,12 @@ export const convertRequestSchema = z.object({
       return trimmed;
     }),
 
-  format: z.enum(["mp3", "mp4", "transcript"], "Format must be 'mp3', 'mp4', or 'transcript'"),
+  format: z.enum(["mp3", "mp4", "transcript", "instrumental"], "Format must be 'mp3', 'mp4', 'transcript', or 'instrumental'"),
 
   // Optional: quality preference (for future use)
   quality: z.enum(["low", "medium", "high"], "Quality must be 'low', 'medium', or 'high'").optional(),
 }).superRefine((data, ctx) => {
-  if (data.format === "mp3" || data.format === "mp4") {
+  if (data.format === "mp3" || data.format === "mp4" || data.format === "instrumental") {
     // Validate YouTube URL format and video ID
     if (!YOUTUBE_REGEX.test(data.url) || !YOUTUBE_ID_PATTERN.test(data.url)) {
       ctx.addIssue({
@@ -98,7 +98,7 @@ export const jobIdSchema = z.string("Job ID is required and must be a string")
  */
 export const urlQuerySchema = z.object({
   url: z.string().min(1).max(500).optional(),
-  format: z.enum(["mp3", "mp4", "transcript"]).optional(),
+  format: z.enum(["mp3", "mp4", "transcript", "instrumental"]).optional(),
 });
 
 /**

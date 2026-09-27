@@ -3,8 +3,9 @@
     "status": 202,
     "body": {
       "jobId": "<JOB_ID>",
-      "status": "processing",
-      "message": "Conversion started",
+      "status": "queued",
+      "position": 1,
+      "message": "Conversion queued",
       "checkUrl": "/api/jobs/<JOB_ID>",
       "pollTimeoutSeconds": 7260
     }
@@ -15,6 +16,12 @@
       "jobId": "<JOB_ID>",
       "status": "completed",
       "format": "transcript",
+      "createdAt": "<TIMESTAMP>",
+      "queuedAt": "<TIMESTAMP>",
+      "startedAt": "<TIMESTAMP>",
+      "finishedAt": "<TIMESTAMP>",
+      "expiresAt": "<TIMESTAMP>",
+      "position": null,
       "videoInfo": {
         "id": "fixture12345",
         "title": "Fixture Video: E2E Test",
@@ -23,9 +30,8 @@
         "uploader": "Fixture Channel",
         "upload_date": "20260718"
       },
-      "outputPath": "<DOWNLOAD_DIR>/<JOB_ID>-Fixture_Video_E2E_Test.txt",
-      "filename": "Fixture_Video_E2E_Test.txt",
-      "createdAt": "<TIMESTAMP>"
+      "outputPath": "<DOWNLOAD_DIR>/.jobs/<JOB_ID>/result.txt",
+      "filename": "Fixture_Video_E2E_Test.txt"
     }
   },
   "download": {

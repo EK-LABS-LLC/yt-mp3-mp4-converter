@@ -33,6 +33,7 @@ export default defineConfig({
       PATH: `${fixtureBin}${delimiter}${process.env.PATH || ""}`,
       YT_DLP_PATH: resolve(fixtureBin, "yt-dlp"),
       WHISPER_CLI_PATH: resolve(fixtureBin, "whisper-cli"),
+      DEMUCS_PATH: resolve(fixtureBin, "demucs"),
       FFMPEG_PATH: resolve(fixtureBin, "ffmpeg"),
       WHISPER_MODEL_PATH: resolve(fixtureBin, "fixture-model.bin"),
       DOWNLOAD_DIR: resolve(import.meta.dirname, "test-results/server-downloads"),

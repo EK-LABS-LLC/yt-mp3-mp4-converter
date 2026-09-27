@@ -54,3 +54,6 @@ __tests__/
 # Logs
 logs/
 *.log
+
+# Local separation environment
+.venv-instrumental/

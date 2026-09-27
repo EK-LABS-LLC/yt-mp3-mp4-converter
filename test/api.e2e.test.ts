@@ -56,7 +56,7 @@ async function waitForJob(jobId: string) {
       errorCode?: string;
       videoInfo?: { title: string };
     };
-    if (job.status !== "processing") return job;
+    if (!["queued", "processing"].includes(job.status)) return job;
     await Bun.sleep(10);
   }
   throw new Error(`Job ${jobId} did not complete`);
@@ -99,7 +99,7 @@ describe("web API end to end", () => {
       fetch(`${ORIGIN}/health`),
     ]);
 
-    expect(await page.text()).toContain("YouTube to MP3/MP4/Transcript Converter");
+    expect(await page.text()).toContain("Your video. In words.");
     expect(script.headers.get("content-type")).toContain("application/javascript");
     expect(await health.json()).toMatchObject({
       status: "healthy",

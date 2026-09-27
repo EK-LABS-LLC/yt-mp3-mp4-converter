@@ -180,7 +180,9 @@ async function captureHttp(): Promise<void> {
   const downloadDir = resolve(tempDir, "http-downloads");
   await mkdir(downloadDir, { recursive: true });
   const captureScript = `
-    const { app } = await import("./src/index.ts");
+    const { createApplication } = await import("./src/index.ts");
+    const runtime = await createApplication();
+    const app = runtime.app;
     console.log = () => {};
     const convertResponse = await app.request("/api/convert", {
       method: "POST",
@@ -193,10 +195,10 @@ async function captureHttp(): Promise<void> {
     for (let attempt = 0; attempt < 100; attempt++) {
       jobResponse = await app.request(\`/api/jobs/\${convertBody.jobId}\`);
       jobBody = await jobResponse.json();
-      if (jobBody.status !== "processing") break;
+      if (!["queued", "processing"].includes(jobBody.status)) break;
       await Bun.sleep(10);
     }
-    if (!jobResponse || !jobBody || jobBody.status === "processing") {
+    if (!jobResponse || !jobBody || ["queued", "processing"].includes(jobBody.status)) {
       throw new Error("Golden transcript job did not complete");
     }
     const downloadResponse = await app.request(\`/downloads/\${convertBody.jobId}\`);
@@ -210,6 +212,7 @@ async function captureHttp(): Promise<void> {
         body: await downloadResponse.text(),
       },
     };
+    await runtime.close();
     process.stdout.write("__GOLDEN_HTTP__" + JSON.stringify(captured, null, 2) + "\\n");
   `;
   const child = Bun.spawn([process.execPath, "--eval", captureScript], {
@@ -241,7 +244,7 @@ async function captureHttp(): Promise<void> {
   const normalized = payload
     .split(downloadDir).join("<DOWNLOAD_DIR>")
     .split(jobId).join("<JOB_ID>")
-    .replace(/"createdAt": \d+/g, '"createdAt": "<TIMESTAMP>"');
+    .replace(/"(createdAt|queuedAt|startedAt|finishedAt|expiresAt)": \d+/g, '"$1": "<TIMESTAMP>"');
   await assertGolden("http-convert-job.json", normalized);
 }
 

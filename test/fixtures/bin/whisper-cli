@@ -20,10 +20,13 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-if (args.includes("--version")) {
+if (args.includes("--version") || args.includes("--help")) {
   console.log("fixture-whisper-cli-1.0.0");
   process.exit(0);
 }
+
+const delay = Number(process.env.WHISPER_FIXTURE_DELAY_MS || "0");
+if (delay > 0) await Bun.sleep(delay);
 
 if (process.env.WHISPER_FIXTURE_MODE === "fail") {
   fail("ERROR: fixture whisper-cli failed to transcribe");

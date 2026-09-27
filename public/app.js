@@ -1,200 +1,243 @@
-// API base URL - defaults to current origin
 const API_BASE = window.location.origin;
-
-// DOM elements
 const form = document.getElementById('converterForm');
 const urlInput = document.getElementById('url');
 const submitBtn = document.getElementById('submitBtn');
 const statusDiv = document.getElementById('status');
+const uploadFile = document.getElementById('uploadFile');
+const uploadHelp = document.getElementById('uploadHelp');
+const dropzone = document.getElementById('dropzone');
+const fileChip = document.getElementById('fileChip');
+const fileName = document.getElementById('fileName');
+const fileSize = document.getElementById('fileSize');
+const removeBtn = document.getElementById('removeFile');
+const taskRadios = Array.from(form.querySelectorAll('input[name="task"]'));
+const formatRadios = Array.from(form.querySelectorAll('input[name="format"]'));
+let maxUploadBytes;
+let currentJobId;
+let inflight = false;
 
-/**
- * Show status message
- * @param {string} message - The message to display
- * @param {string} type - The type of status: 'processing', 'success', or 'error'
- */
+const TASK_LABELS = { transcribe: 'Transcribe', mp3: 'Extract MP3', instrumental: 'Create instrumental' };
+
 function showStatus(message, type = 'processing') {
   statusDiv.className = `status ${type}`;
-
+  statusDiv.replaceChildren();
   if (type === 'processing') {
-    statusDiv.innerHTML = `<span class="spinner"></span>${message}`;
-  } else if (type === 'success') {
-    statusDiv.innerHTML = message;
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+    statusDiv.append(spinner);
+  }
+  statusDiv.append(document.createTextNode(message));
+}
+
+function retainJobLink() {
+  if (!currentJobId) return;
+  const link = document.createElement('a');
+  link.href = `${API_BASE}/api/jobs/${encodeURIComponent(currentJobId)}`;
+  link.textContent = 'Check saved job status';
+  statusDiv.append(document.createElement('br'), link);
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function selectedTask() {
+  const checked = taskRadios.find(radio => radio.checked);
+  return checked ? checked.value : 'transcribe';
+}
+
+function updateSubmitLabel() {
+  if (inflight) return;
+  document.getElementById('instrumentalHelp').hidden = (uploadFile.files[0] ? selectedTask() : formatRadios.find(radio => radio.checked)?.value) !== 'instrumental';
+  if (uploadFile.files[0]) {
+    submitBtn.textContent = TASK_LABELS[selectedTask()] || 'Transcribe';
   } else {
-    statusDiv.textContent = message;
+    submitBtn.textContent = urlInput.value.trim() ? 'Download' : TASK_LABELS[selectedTask()];
   }
 }
 
-/**
- * Clear status message
- */
-function clearStatus() {
-  statusDiv.className = 'status';
-  statusDiv.textContent = '';
+function setBusy(busy) {
+  inflight = busy;
+  submitBtn.disabled = busy;
+  uploadFile.disabled = busy;
+  dropzone.disabled = busy;
+  removeBtn.disabled = busy;
+  const fileSelected = Boolean(uploadFile.files[0]);
+  urlInput.disabled = busy || fileSelected;
+  taskRadios.forEach(radio => { radio.disabled = busy; });
+  formatRadios.forEach(radio => { radio.disabled = busy || fileSelected; });
 }
 
-// Used when the server does not report a deadline. Matches the longest
-// server-side budget (MP4), so an older server is never given up on early.
-const FALLBACK_POLL_TIMEOUT_SECONDS = 960;
-const MIN_POLL_INTERVAL = 1000;
-const MAX_POLL_INTERVAL = 5000;
+function refreshFileUi() {
+  const file = uploadFile.files[0];
+  if (file) {
+    fileName.textContent = file.name;
+    fileSize.textContent = formatBytes(file.size);
+    fileChip.hidden = false;
+    dropzone.hidden = true;
+  } else {
+    fileChip.hidden = true;
+    dropzone.hidden = false;
+  }
+  setBusy(inflight);
+  updateSubmitLabel();
+}
 
-/**
- * Poll job status until completion
- * @param {string} jobId - The job ID to poll
- * @param {number} [timeoutSeconds] - Server-reported deadline for this format
- * @returns {Promise<Object>} - The completed job data
- */
-async function pollJobStatus(jobId, timeoutSeconds) {
-  const budget = Number(timeoutSeconds) > 0 ? Number(timeoutSeconds) : FALLBACK_POLL_TIMEOUT_SECONDS;
-  const deadline = Date.now() + budget * 1000;
-  let interval = MIN_POLL_INTERVAL;
+async function loadUploadLimit() {
+  try {
+    const response = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(10000) });
+    const data = await response.json();
+    if (Number.isSafeInteger(data.maxUploadBytes) && data.maxUploadBytes > 0) {
+      maxUploadBytes = data.maxUploadBytes;
+      uploadHelp.textContent = `Up to ${Math.floor(maxUploadBytes / 1024 / 1024)} MB per file. Files are processed locally.`;
+      return;
+    }
+  } catch { /* The server still enforces its limit if health is unavailable. */ }
+  uploadHelp.textContent = 'Limit unavailable. The server will check your file when you upload it.';
+}
 
+async function pollJobStatus(jobId, timeoutSeconds, initialStatus = 'queued') {
+  const budget = Number(timeoutSeconds) > 0 ? Number(timeoutSeconds) : 7260;
+  let deadline = initialStatus === 'processing' ? Date.now() + budget * 1000 : undefined;
+  let failures = 0;
+  let interval = 1000;
   for (;;) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      throw new Error('Conversion timed out');
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), remaining);
-    let response;
+    if (deadline !== undefined && Date.now() >= deadline) throw new Error('Conversion timed out. Your saved job may still finish.');
+    const requestBudget = Math.max(1, Math.min(10000, deadline === undefined ? 10000 : deadline - Date.now()));
     let data;
-
     try {
-      response = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to check job status');
-      }
-
+      const response = await fetch(`${API_BASE}/api/jobs/${encodeURIComponent(jobId)}`, { signal: AbortSignal.timeout(requestBudget) });
+      if (response.status === 404) throw Object.assign(new Error('This job has expired or is no longer available.'), { permanent: true });
+      if (!response.ok) throw new Error('The server is temporarily unavailable');
       data = await response.json();
+      failures = 0;
     } catch (error) {
-      if (controller.signal.aborted) {
-        throw new Error('Conversion timed out');
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
+      if (error.permanent) throw error;
+      if (deadline !== undefined && Date.now() >= deadline) throw new Error('Conversion timed out. Your saved job may still finish.');
+      if (++failures >= 12) throw new Error('Cannot reach the server. Your job is saved; check its status later.');
+      showStatus('Reconnecting to your saved job…');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      continue;
     }
-
-    if (data.status === 'completed') {
-      return data;
+    if (data.status === 'completed') return data;
+    if (data.status === 'failed') throw new Error(data.error || 'Conversion failed');
+    if (data.status === 'queued') {
+      showStatus(`Queued — position ${Number(data.position) || 1}`);
+    } else {
+      if (deadline === undefined) deadline = (Number(data.startedAt) || Date.now()) + budget * 1000;
+      showStatus('Processing locally. Your job will remain available if the page is closed.');
     }
-
-    if (data.status === 'failed') {
-      throw new Error(data.error || 'Conversion failed');
-    }
-
-    const waitRemaining = deadline - Date.now();
-    if (waitRemaining <= 0) {
-      throw new Error('Conversion timed out');
-    }
-
-    // Back off gradually so long conversions do not flood the server.
-    await new Promise(resolve => setTimeout(resolve, Math.min(interval, waitRemaining)));
-    interval = Math.min(interval * 1.5, MAX_POLL_INTERVAL);
+    const remaining = deadline === undefined ? interval : Math.max(0, deadline - Date.now());
+    await new Promise(resolve => setTimeout(resolve, Math.min(interval, remaining)));
+    interval = Math.min(interval * 1.5, 5000);
   }
 }
 
-/**
- * Handle form submission
- */
+function showDownload(job, jobId, automatic) {
+  showStatus(job.format === 'transcript' ? 'Transcript ready!' : 'Conversion complete!', 'success');
+  const link = document.createElement('a');
+  link.href = `${API_BASE}/downloads/${encodeURIComponent(jobId)}`;
+  link.download = job.filename || 'transcript.txt';
+  link.className = 'download-link';
+  link.textContent = `Download ${job.format === 'transcript' ? 'Transcript' : job.format === 'instrumental' ? 'Instrumental WAV' : job.format.toUpperCase()}`;
+  const filename = document.createElement('span');
+  filename.className = 'filename';
+  filename.textContent = job.filename || '';
+  statusDiv.append(document.createElement('br'), link, filename);
+  if (automatic) setTimeout(() => link.click(), 500);
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
-
-  const url = urlInput.value.trim();
+  if (inflight) return;
+  currentJobId = undefined;
+  const selectedFile = uploadFile.files[0];
+  const task = selectedTask();
   const format = document.querySelector('input[name="format"]:checked').value;
-
-  // Reset UI
-  clearStatus();
-  submitBtn.disabled = true;
-
+  if (selectedFile?.size === 0) { showStatus('Choose a non-empty audio or video file.', 'error'); return; }
+  if (selectedFile && maxUploadBytes !== undefined && selectedFile.size > maxUploadBytes) {
+    showStatus(`Choose a file no larger than ${Math.floor(maxUploadBytes / 1024 / 1024)} MB.`, 'error'); return;
+  }
+  if (!selectedFile && !urlInput.value.trim()) { showStatus('Choose a file or enter a video URL.', 'error'); return; }
+  setBusy(true);
   try {
-    const action = format === 'transcript' ? 'transcript download' : 'conversion';
-
-    // Show processing status
-    showStatus(`Starting ${action}...`, 'processing');
-
-    // Start conversion
-    const response = await fetch(`${API_BASE}/api/convert`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url, format }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to start conversion');
+    showStatus(selectedFile ? 'Uploading your file…' : 'Submitting your conversion…');
+    let response;
+    if (selectedFile) {
+      const endpoint = task === 'transcribe' ? `${API_BASE}/api/transcribe` : `${API_BASE}/api/transcribe?format=${task}`;
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Upload-Filename': encodeURIComponent(selectedFile.name) },
+        body: selectedFile,
+      });
+    } else {
+      response = await fetch(`${API_BASE}/api/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.value.trim(), format }),
+      });
     }
-
-    const { jobId, pollTimeoutSeconds } = await response.json();
-
-    // Poll for completion
-    showStatus(`${format === 'transcript' ? 'Preparing transcript' : `Converting ${format.toUpperCase()}`}... This may take a moment.`, 'processing');
-
-    const job = await pollJobStatus(jobId, pollTimeoutSeconds);
-
-    // Show success with download link
-    const downloadUrl = `${API_BASE}/downloads/${jobId}`;
-    const displayName = job.filename.length > 40
-      ? job.filename.substring(0, 37) + '...' + job.filename.slice(-4)
-      : job.filename;
-    showStatus(
-      `${format === 'transcript' ? 'Transcript ready!' : 'Conversion complete!'}<br><a href="${downloadUrl}" class="download-link" download="${job.filename}">Download ${job.format === 'transcript' ? 'Transcript' : job.format.toUpperCase()}</a><span class="filename" title="${job.filename}">${displayName}</span>`,
-      'success'
-    );
-
-    // Trigger download automatically after a short delay
-    setTimeout(() => {
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = job.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }, 500);
-
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Submission failed');
+    currentJobId = data.jobId;
+    const job = await pollJobStatus(data.jobId, data.pollTimeoutSeconds, data.status);
+    showDownload(job, data.jobId, !selectedFile);
   } catch (error) {
-    showStatus(error.message || 'An error occurred during conversion', 'error');
-    console.error('Conversion error:', error);
+    showStatus(error.message || 'Conversion failed', 'error');
+    retainJobLink();
   } finally {
-    submitBtn.disabled = false;
+    setBusy(false);
+    updateSubmitLabel();
   }
 }
 
-/**
- * Validate YouTube URL
- * @param {string} url - The URL to validate
- * @returns {boolean} - Whether the URL is valid
- */
-function isValidYouTubeUrl(url) {
-  const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/;
-  return pattern.test(url);
-}
-
-/**
- * Handle input validation
- */
 function validateUrlInput() {
   const url = urlInput.value.trim();
   const format = document.querySelector('input[name="format"]:checked')?.value;
-  // Only MP3/MP4 downloads are YouTube-specific; transcripts accept any URL.
-  const needsYouTube = format === 'mp3' || format === 'mp4';
-  if (url && needsYouTube && !isValidYouTubeUrl(url)) {
-    urlInput.style.borderColor = '#e94560';
-  } else {
-    urlInput.style.borderColor = '#e0e0e0';
-  }
+  const youtube = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/;
+  const invalid = Boolean(url) && format !== 'transcript' && !youtube.test(url);
+  urlInput.style.borderColor = invalid ? '#99392b' : '';
+  urlInput.setAttribute('aria-invalid', invalid ? 'true' : 'false');
 }
 
-urlInput.addEventListener('input', validateUrlInput);
-form.querySelectorAll('input[name="format"]').forEach((radio) => {
-  radio.addEventListener('change', validateUrlInput);
+dropzone.addEventListener('click', () => { if (!inflight) uploadFile.click(); });
+uploadFile.addEventListener('change', refreshFileUi);
+removeBtn.addEventListener('click', () => {
+  if (inflight) return;
+  uploadFile.value = '';
+  refreshFileUi();
+});
+taskRadios.forEach(radio => radio.addEventListener('change', () => {
+  const format = radio.value === 'transcribe' ? 'transcript' : radio.value;
+  formatRadios.forEach(option => { option.checked = option.value === format; });
+  validateUrlInput();
+  updateSubmitLabel();
+}));
+urlInput.addEventListener('input', () => { validateUrlInput(); updateSubmitLabel(); });
+formatRadios.forEach(radio => radio.addEventListener('change', () => { validateUrlInput(); updateSubmitLabel(); }));
+form.addEventListener('submit', handleSubmit);
+
+['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => {
+  event.preventDefault();
+  dropzone.classList.add('dragging');
+}));
+['dragleave', 'dragend', 'drop'].forEach(type => dropzone.addEventListener(type, event => {
+  event.preventDefault();
+  if (type === 'dragleave' && dropzone.contains(event.relatedTarget)) return;
+  dropzone.classList.remove('dragging');
+}));
+dropzone.addEventListener('drop', event => {
+  if (inflight) return;
+  const files = event.dataTransfer && event.dataTransfer.files;
+  if (files && files.length > 0) {
+    uploadFile.files = files;
+    refreshFileUi();
+  }
 });
 
-// Attach form submit handler
-form.addEventListener('submit', handleSubmit);
+void loadUploadLimit();
+updateSubmitLabel();
