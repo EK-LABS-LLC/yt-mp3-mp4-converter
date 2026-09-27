@@ -27,7 +27,7 @@ bun run start
 
 Open <http://localhost:3000>, paste a YouTube URL, choose an output, and select **Download**.
 
-`setup.sh` is safe to run again. It installs or upgrades to Bun 1.3.6 or newer, detects existing tools, installs only missing requirements, installs the locked Bun dependencies, and runs the local checks. On macOS it also installs whisper.cpp and downloads the default speech-to-text model; on other platforms speech-to-text is optional. Automatic system-package installation supports:
+`setup.sh` is safe to run again. It installs or upgrades to Bun 1.4.2 or newer, detects existing tools, installs only missing requirements, installs the locked Bun dependencies, and runs the local checks. On macOS it also installs whisper.cpp and downloads the default speech-to-text model; on other platforms speech-to-text is optional. Automatic system-package installation supports:
 
 - macOS, bootstrapping Homebrew when needed
 - Debian/Ubuntu with `apt-get`

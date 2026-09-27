@@ -50,7 +50,7 @@ describe("setup.sh", () => {
       `set +e +u; set +o pipefail; source "${SETUP_SCRIPT}"; if [[ $- == *e* || $- == *u* ]] || shopt -qo pipefail; then exit 1; fi; printf 'sourced %s\\n' "$REQUIRED_BUN_VERSION"`,
     );
     expect(sourced.exitCode).toBe(0);
-    expect(sourced.stdout).toBe("sourced 1.3.6\n");
+    expect(sourced.stdout).toBe("sourced 1.4.2\n");
     expect(sourced.stdout).not.toContain("Setup complete");
   });
 
@@ -98,7 +98,7 @@ describe("setup.sh", () => {
 
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("1.3.5");
-      expect(result.stderr).toContain("1.3.6");
+      expect(result.stderr).toContain("1.4.2");
       expect(result.stdout).not.toContain("Installing");
     } finally {
       await rm(home, { recursive: true, force: true });

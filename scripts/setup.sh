@@ -5,7 +5,7 @@ CHECK_ONLY=false
 WITH_BROWSER=false
 
 # Keep in step with the "engines.bun" constraint in package.json.
-REQUIRED_BUN_VERSION="1.3.6"
+REQUIRED_BUN_VERSION="1.4.2"
 
 usage() {
   cat <<'EOF'

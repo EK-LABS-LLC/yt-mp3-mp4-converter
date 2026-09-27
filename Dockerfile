@@ -1,7 +1,7 @@
 # Multi-stage build for YouTube to MP3/MP4 Converter
 # Supports both standard Docker and Raspberry Pi (ARM) architectures
 
-FROM oven/bun:1 AS base
+FROM oven/bun:1.4.2 AS base
 WORKDIR /app
 
 # Copy package files
@@ -19,7 +19,7 @@ COPY tsconfig.json ./
 RUN bun build src/index.ts --target=bun --outdir ./dist
 
 # Production stage
-FROM oven/bun:1 AS production
+FROM oven/bun:1.4.2 AS production
 
 WORKDIR /app
 
